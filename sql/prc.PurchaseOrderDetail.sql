@@ -1,85 +1,84 @@
-/*====================================================
-Purchase Order History Aggregate
-====================================================*/
-
 WITH EKBE_AGG AS
 (
     SELECT
         EBELN,
         EBELP,
 
-        /* Goods Receipt */
-
         SUM(
             CASE
-                WHEN VGABE = '1'
-                THEN
-                    CASE
-                        WHEN SHKZG = 'H'
-                        THEN -MENGE
-                        ELSE MENGE
-                    END
+                WHEN BEWTP = 'E'
+                THEN CASE WHEN SHKZG = 'H'
+                          THEN -MENGE
+                          ELSE MENGE
+                     END
                 ELSE 0
             END
         ) AS GrQty,
 
         SUM(
             CASE
-                WHEN VGABE = '1'
-                THEN
-                    CASE
-                        WHEN SHKZG = 'H'
-                        THEN -DMBTR
-                        ELSE DMBTR
-                    END
+                WHEN BEWTP = 'E'
+                THEN CASE WHEN SHKZG = 'H'
+                          THEN -DMBTR
+                          ELSE DMBTR
+                     END
                 ELSE 0
             END
         ) AS GrAmount,
 
         MAX(
             CASE
-                WHEN VGABE = '1'
+                WHEN BEWTP = 'E'
                 THEN BUDAT
             END
         ) AS LastGrDate,
 
-        /* Invoice Receipt */
-
         SUM(
             CASE
-                WHEN VGABE = '2'
-                THEN
-                    CASE
-                        WHEN SHKZG = 'H'
-                        THEN -MENGE
-                        ELSE MENGE
-                    END
+                WHEN BEWTP = 'Q'
+                THEN CASE WHEN SHKZG = 'H'
+                          THEN -MENGE
+                          ELSE MENGE
+                     END
                 ELSE 0
             END
         ) AS IrQty,
 
         SUM(
             CASE
-                WHEN VGABE = '2'
-                THEN
-                    CASE
-                        WHEN SHKZG = 'H'
-                        THEN -DMBTR
-                        ELSE DMBTR
-                    END
+                WHEN BEWTP = 'Q'
+                THEN CASE WHEN SHKZG = 'H'
+                          THEN -DMBTR
+                          ELSE DMBTR
+                     END
                 ELSE 0
             END
         ) AS IrAmount,
 
         MAX(
             CASE
-                WHEN VGABE = '2'
+                WHEN BEWTP = 'Q'
                 THEN BUDAT
             END
         ) AS LastIrDate
 
     FROM EKBE
+    GROUP BY
+        EBELN,
+        EBELP
+),
 
+EKKN_AGG AS
+(
+    SELECT
+        EBELN,
+        EBELP,
+
+        MAX(SAKTO) AS GlAccount,
+        MAX(KOSTL) AS CostCenter,
+        MAX(AUFNR) AS IntOrder
+
+    FROM EKKN
     GROUP BY
         EBELN,
         EBELP
@@ -87,129 +86,72 @@ WITH EKBE_AGG AS
 
 SELECT
 
-    /*====================================================
-      Purchase Order
-    ====================================================*/
+    /* Key */
+    H.EBELN                    AS PoNumber,
+    I.EBELP                    AS PoItem,
 
-    H.EBELN                                AS PoNumber,
-    I.EBELP                                AS PoItem,
-    H.BUKRS                                AS CompanyCode,
-    H.BSART                                AS PoType,
-    H.EKORG                                AS PurchasingOrg,
-    H.EKGRP                                AS PurchasingGroup,
+    /* Header */
+    H.BSART                    AS PoType,
+    H.BUKRS                    AS CompanyCode,
+    H.EKORG                    AS PurchOrg,
+    H.EKGRP                    AS PurchGroup,
+    H.BEDAT                    AS PoDate,
 
-    /*====================================================
-      Vendor
-    ====================================================*/
+    /* Vendor */
+    H.LIFNR                    AS Vendor,
+    H.ZTERM                    AS PaymentTerm,
+    V.NAME1                    AS VendorName,
+    V.LAND1                    AS VendorCountry,
 
-    H.LIFNR                                AS VendorCode,
-    V.NAME1                                AS VendorName,
-    V.LAND1                                AS VendorCountry,
+    /* Material */
+    I.MATNR                    AS Material,
+    M.MAKTX                    AS MaterialDesc,
+    I.MATKL                    AS MaterialGroup,
 
-    /*====================================================
-      Material
-    ====================================================*/
+    /* Organization */
+    I.WERKS                    AS Plant,
+    I.LGORT                    AS StorLoc,
 
-    I.MATNR                                AS MaterialCode,
-    M.MAKTX                                AS MaterialDescription,
-    I.TXZ01                                AS MaterialShortText,
-    I.MATKL                                AS MaterialGroup,
+    /* Account Assignment */
+    K.GlAccount                AS GlAccount,
+    K.CostCenter               AS CostCenter,
+    K.IntOrder                 AS IntOrder,
 
-    /*====================================================
-      Organization
-    ====================================================*/
+    /* Amount */
+    I.MENGE                    AS OrderQty,
+    I.MEINS                    AS OrderUom,
+    I.NETPR                    AS NetPrice,
+    I.NETWR                    AS NetValue,
 
-    I.WERKS                                AS Plant,
-    I.LGORT                                AS StorageLocation,
+    H.WAERS                    AS Currency,
 
-    /*====================================================
-      Date
-    ====================================================*/
+    /* Later confirm */
+    NULL                       AS ExchangeRate,
 
-    H.BEDAT                                AS PoDate,
-    I.EINDT                                AS DeliveryDate,
+    /* Delivery */
+    I.EINDT                    AS DelivDate,
+    I.ELIKZ                    AS DelivComplInd,
+    I.WEPOS                    AS GrInd,
+    I.REPOS                    AS IrInd,
+    I.LOEKZ                    AS DeletionInd,
 
-    /*====================================================
-      Quantity & Amount
-    ====================================================*/
+    /* GR Summary */
+    ISNULL(B.GrQty,0)          AS GrQty,
+    ISNULL(B.GrAmount,0)       AS GrAmount,
+    B.LastGrDate               AS LastGrDate,
 
-    I.MENGE                                AS OrderQty,
-    I.MEINS                                AS OrderUom,
-    I.NETPR                                AS UnitPrice,
-    I.NETWR                                AS OrderAmount,
-    H.WAERS                                AS Currency,
+    /* IR Summary */
+    ISNULL(B.IrQty,0)          AS IrQty,
+    ISNULL(B.IrAmount,0)       AS IrAmount,
+    B.LastIrDate               AS LastIrDate,
 
-    /*====================================================
-      Payment
-    ====================================================*/
+    /* PR */
+    I.BANFN                    AS PrNumber,
+    I.BNFPO                    AS PrItem,
 
-    H.ZTERM                                AS PaymentTerm,
-
-    /*====================================================
-      PR Information
-    ====================================================*/
-
-    I.BANFN                                AS PrNumber,
-    I.BNFPO                                AS PrItem,
-
-    /*====================================================
-      Contract Information
-    ====================================================*/
-
-    I.KONNR                                AS ContractNumber,
-    I.KTPNR                                AS ContractItem,
-
-    /*====================================================
-      PO Status
-    ====================================================*/
-
-    I.LOEKZ                                AS DeleteIndicator,
-    I.ELIKZ                                AS DeliveryCompleted,
-    I.WEPOS                                AS GoodsReceiptIndicator,
-    I.REPOS                                AS InvoiceReceiptIndicator,
-
-    /*====================================================
-      GR Summary
-    ====================================================*/
-
-    ISNULL(B.GrQty,0)                      AS GrQty,
-    ISNULL(B.GrAmount,0)                   AS GrAmount,
-    B.LastGrDate,
-
-    /*====================================================
-      IR Summary
-    ====================================================*/
-
-    ISNULL(B.IrQty,0)                      AS IrQty,
-    ISNULL(B.IrAmount,0)                   AS IrAmount,
-    B.LastIrDate,
-
-    /*====================================================
-      Derived Columns
-    ====================================================*/
-
-    I.MENGE - ISNULL(B.GrQty,0)            AS OpenQty,
-
-    I.NETWR - ISNULL(B.IrAmount,0)         AS OpenAmount,
-
-    DATEDIFF(
-        DAY,
-        H.BEDAT,
-        B.LastGrDate
-    )                                      AS PoToGrDays,
-
-    CASE
-        WHEN I.LOEKZ IS NOT NULL
-             AND LTRIM(RTRIM(I.LOEKZ)) <> ''
-        THEN 'Deleted'
-
-        WHEN ISNULL(B.GrQty,0) >= I.MENGE
-        THEN 'Closed'
-
-        ELSE 'Open'
-    END                                    AS PoStatus,
-
-    GETDATE()                              AS EtlLoadTime
+    /* Contract */
+    I.KONNR                    AS Contract,
+    I.KTPNR                    AS ContractItem
 
 FROM EKKO H
 
@@ -222,6 +164,10 @@ LEFT JOIN LFA1 V
 LEFT JOIN MAKT M
     ON I.MATNR = M.MATNR
    AND M.SPRAS = 'M'
+
+LEFT JOIN EKKN_AGG K
+    ON I.EBELN = K.EBELN
+   AND I.EBELP = K.EBELP
 
 LEFT JOIN EKBE_AGG B
     ON I.EBELN = B.EBELN
