@@ -1,106 +1,215 @@
+/*====================================================
+Purchase Order History Aggregate
+====================================================*/
+
+WITH EKBE_AGG AS
+(
+    SELECT
+        EBELN,
+        EBELP,
+
+        /* Goods Receipt */
+
+        SUM(
+            CASE
+                WHEN VGABE = '1'
+                THEN
+                    CASE
+                        WHEN SHKZG = 'H'
+                        THEN -MENGE
+                        ELSE MENGE
+                    END
+                ELSE 0
+            END
+        ) AS GrQty,
+
+        SUM(
+            CASE
+                WHEN VGABE = '1'
+                THEN
+                    CASE
+                        WHEN SHKZG = 'H'
+                        THEN -DMBTR
+                        ELSE DMBTR
+                    END
+                ELSE 0
+            END
+        ) AS GrAmount,
+
+        MAX(
+            CASE
+                WHEN VGABE = '1'
+                THEN BUDAT
+            END
+        ) AS LastGrDate,
+
+        /* Invoice Receipt */
+
+        SUM(
+            CASE
+                WHEN VGABE = '2'
+                THEN
+                    CASE
+                        WHEN SHKZG = 'H'
+                        THEN -MENGE
+                        ELSE MENGE
+                    END
+                ELSE 0
+            END
+        ) AS IrQty,
+
+        SUM(
+            CASE
+                WHEN VGABE = '2'
+                THEN
+                    CASE
+                        WHEN SHKZG = 'H'
+                        THEN -DMBTR
+                        ELSE DMBTR
+                    END
+                ELSE 0
+            END
+        ) AS IrAmount,
+
+        MAX(
+            CASE
+                WHEN VGABE = '2'
+                THEN BUDAT
+            END
+        ) AS LastIrDate
+
+    FROM EKBE
+
+    GROUP BY
+        EBELN,
+        EBELP
+)
+
 SELECT
 
-    /* =========================
-       Purchase Order
-       ========================= */
+    /*====================================================
+      Purchase Order
+    ====================================================*/
 
-    H.EBELN                             AS PoNumber,
-    I.EBELP                             AS PoItem,
-    H.BSART                             AS PoType,
-    H.BUKRS                             AS CompanyCode,
-    H.EKORG                             AS PurchasingOrg,
-    H.EKGRP                             AS PurchasingGroup,
+    H.EBELN                                AS PoNumber,
+    I.EBELP                                AS PoItem,
+    H.BUKRS                                AS CompanyCode,
+    H.BSART                                AS PoType,
+    H.EKORG                                AS PurchasingOrg,
+    H.EKGRP                                AS PurchasingGroup,
 
-    /* =========================
-       Vendor
-       ========================= */
+    /*====================================================
+      Vendor
+    ====================================================*/
 
-    H.LIFNR                             AS VendorCode,
-    V.NAME1                             AS VendorName,
-    V.LAND1                             AS VendorCountry,
+    H.LIFNR                                AS VendorCode,
+    V.NAME1                                AS VendorName,
+    V.LAND1                                AS VendorCountry,
 
-    /* =========================
-       Purchase Order Date
-       ========================= */
+    /*====================================================
+      Material
+    ====================================================*/
 
-    H.BEDAT                             AS PoDate,
-    I.EINDT                             AS DeliveryDate,
+    I.MATNR                                AS MaterialCode,
+    M.MAKTX                                AS MaterialDescription,
+    I.TXZ01                                AS MaterialShortText,
+    I.MATKL                                AS MaterialGroup,
 
-    /* =========================
-       Material
-       ========================= */
+    /*====================================================
+      Organization
+    ====================================================*/
 
-    I.MATNR                             AS MaterialCode,
-    M.MAKTX                             AS MaterialDescription,
-    I.TXZ01                             AS ShortText,
-    I.MATKL                             AS MaterialGroup,
+    I.WERKS                                AS Plant,
+    I.LGORT                                AS StorageLocation,
 
-    /* =========================
-       Plant
-       ========================= */
+    /*====================================================
+      Date
+    ====================================================*/
 
-    I.WERKS                             AS Plant,
-    I.LGORT                             AS StorageLocation,
+    H.BEDAT                                AS PoDate,
+    I.EINDT                                AS DeliveryDate,
 
-    /* =========================
-       Quantity
-       ========================= */
+    /*====================================================
+      Quantity & Amount
+    ====================================================*/
 
-    I.MENGE                             AS OrderQty,
-    I.MEINS                             AS OrderUom,
+    I.MENGE                                AS OrderQty,
+    I.MEINS                                AS OrderUom,
+    I.NETPR                                AS UnitPrice,
+    I.NETWR                                AS OrderAmount,
+    H.WAERS                                AS Currency,
 
-    /* =========================
-       Amount
-       ========================= */
+    /*====================================================
+      Payment
+    ====================================================*/
 
-    I.NETPR                             AS UnitPrice,
-    I.NETWR                             AS OrderAmount,
-    H.WAERS                             AS Currency,
+    H.ZTERM                                AS PaymentTerm,
 
-    /* =========================
-       Payment
-       ========================= */
+    /*====================================================
+      PR Information
+    ====================================================*/
 
-    H.ZTERM                             AS PaymentTerm,
+    I.BANFN                                AS PrNumber,
+    I.BNFPO                                AS PrItem,
 
-    /* =========================
-       PR Reference
-       ========================= */
+    /*====================================================
+      Contract Information
+    ====================================================*/
 
-    I.BANFN                             AS PrNumber,
-    I.BNFPO                             AS PrItem,
+    I.KONNR                                AS ContractNumber,
+    I.KTPNR                                AS ContractItem,
 
-    /* =========================
-       Contract Reference
-       ========================= */
+    /*====================================================
+      PO Status
+    ====================================================*/
 
-    I.KONNR                             AS ContractNumber,
-    I.KTPNR                             AS ContractItem,
+    I.LOEKZ                                AS DeleteIndicator,
+    I.ELIKZ                                AS DeliveryCompleted,
+    I.WEPOS                                AS GoodsReceiptIndicator,
+    I.REPOS                                AS InvoiceReceiptIndicator,
 
-    /* =========================
-       Status
-       ========================= */
+    /*====================================================
+      GR Summary
+    ====================================================*/
 
-    I.LOEKZ                             AS DeletionIndicator,
-    I.ELIKZ                             AS DeliveryCompleted,
-    I.WEPOS                             AS GoodsReceiptIndicator,
-    I.REPOS                             AS InvoiceReceiptIndicator,
+    ISNULL(B.GrQty,0)                      AS GrQty,
+    ISNULL(B.GrAmount,0)                   AS GrAmount,
+    B.LastGrDate,
 
-    /* =========================
-       Placeholder
-       後續由 EKBE 補
-       ========================= */
+    /*====================================================
+      IR Summary
+    ====================================================*/
 
-    CAST(NULL AS DECIMAL(18,2))         AS GrQty,
-    CAST(NULL AS DECIMAL(18,2))         AS GrAmount,
-    CAST(NULL AS DECIMAL(18,2))         AS IrQty,
-    CAST(NULL AS DECIMAL(18,2))         AS IrAmount,
+    ISNULL(B.IrQty,0)                      AS IrQty,
+    ISNULL(B.IrAmount,0)                   AS IrAmount,
+    B.LastIrDate,
 
-    /* =========================
-       ETL
-       ========================= */
+    /*====================================================
+      Derived Columns
+    ====================================================*/
 
-    GETDATE()                           AS LoadDate
+    I.MENGE - ISNULL(B.GrQty,0)            AS OpenQty,
+
+    I.NETWR - ISNULL(B.IrAmount,0)         AS OpenAmount,
+
+    DATEDIFF(
+        DAY,
+        H.BEDAT,
+        B.LastGrDate
+    )                                      AS PoToGrDays,
+
+    CASE
+        WHEN I.LOEKZ IS NOT NULL
+             AND LTRIM(RTRIM(I.LOEKZ)) <> ''
+        THEN 'Deleted'
+
+        WHEN ISNULL(B.GrQty,0) >= I.MENGE
+        THEN 'Closed'
+
+        ELSE 'Open'
+    END                                    AS PoStatus,
+
+    GETDATE()                              AS EtlLoadTime
 
 FROM EKKO H
 
@@ -112,4 +221,8 @@ LEFT JOIN LFA1 V
 
 LEFT JOIN MAKT M
     ON I.MATNR = M.MATNR
-   AND M.SPRAS = 'M';
+   AND M.SPRAS = 'M'
+
+LEFT JOIN EKBE_AGG B
+    ON I.EBELN = B.EBELN
+   AND I.EBELP = B.EBELP;
