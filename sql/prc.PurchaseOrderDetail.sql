@@ -124,12 +124,10 @@ SELECT
     I.NETWR                    AS NetValue,
 
     H.WAERS                    AS Currency,
-
-    /* Later confirm */
-    NULL                       AS ExchangeRate,
+    H.WKURS                    AS ExchangeRate,
 
     /* Delivery */
-    I.EINDT                    AS DelivDate,
+    --I.EINDT                    AS DelivDate,
     I.ELIKZ                    AS DelivComplInd,
     I.WEPOS                    AS GrInd,
     I.REPOS                    AS IrInd,
